@@ -345,7 +345,7 @@ begin
 			Write       => Write,
 			XYbit_undoc => XYbit_undoc);
 
-	alu : entity work.T80_ALU -- karabas: "entity" for XST
+	u_alu : entity work.T80_ALU -- karabas: "entity" for XST; label alu clashed with ALU_Q in ghdl Verilog
 		generic map(
 			Mode   => Mode,
 			Flag_C => Flag_C,
@@ -641,7 +641,7 @@ begin
 						F(Flag_N) <= DI_Reg(7);
 						F(Flag_C) <= ioq(8);
 						F(Flag_H) <= ioq(8);
-						ioq := (ioq and x"7") xor ('0'&BusA);
+						ioq := (ioq and "000000111") xor ('0'&BusA); -- karabas: 9-bit mask (x"7" is 4 bits)
 						F(Flag_P) <= not (ioq(0) xor ioq(1) xor ioq(2) xor ioq(3) xor ioq(4) xor ioq(5) xor ioq(6) xor ioq(7));
 					end if;
 

@@ -1,21 +1,21 @@
--- Ф0 size measure: the SMS_MiSTer machine (system + video + 8 KB work RAM) as the karabas core will
--- use it. Tied off: System E (second VDP / PSG, MC8123), Evolution, Game Genie, Gear-to-Gear link,
--- the BIOS (internal boot ROM and loaded BIOS), paddles, savestates. Ports stay for what the board
--- glue will drive: cartridge ROM (SDRAM), cart RAM (nvram), pads, SK-1100 keyboard, video, audio.
+-- sms_machine: the SMS_MiSTer machine as the karabas core uses it: system + video timing + 8 KB work
+-- RAM + the clock enables of the MiSTer top (clk_sys = 53.693175 MHz = 15 x 3.579545: CPU / 15,
+-- VDP / 5, pixel / 10, sprites / 2), on the rising edge here (MiSTer: falling edge, same pattern).
+-- Tied off: System E (second VDP / PSG, MC8123), Evolution, Game Genie, Gear-to-Gear link, the BIOS
+-- (internal boot ROM and loaded BIOS), paddles, savestates; XST drops that logic.
+-- Ports stay for what the board glue drives: cartridge ROM (SDRAM), cart RAM (nvram), pads, SK-1100
+-- keyboard, video (x / y of the pixel on ce_pix, 12-bit colour), audio.
 -- FM = false ties fm_ena to 0 so XST drops the VM2413.
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
-entity sms_measure is
+entity sms_machine is
 	generic (
 		FM : boolean := true
 	);
 	port (
 		clk_sys   : in  std_logic;
-		ce_cpu    : in  std_logic;
-		ce_vdp    : in  std_logic;
-		ce_pix    : in  std_logic;
-		ce_sp     : in  std_logic;
 		reset_n   : in  std_logic;
 		gg        : in  std_logic;
 		pal       : in  std_logic;
@@ -24,6 +24,7 @@ entity sms_measure is
 		sc3000_en : in  std_logic;
 		sk1100_en : in  std_logic;
 		mapper_lock : in std_logic;
+		cart_in   : in  std_logic;                    -- 1 = a cartridge is loaded (dbr of MiSTer)
 
 		rom_rd    : out std_logic;
 		rom_a     : out std_logic_vector(23 downto 0);
@@ -31,11 +32,16 @@ entity sms_measure is
 
 		j1        : in  std_logic_vector(6 downto 0); -- th tr tl right left down up (active low)
 		j2        : in  std_logic_vector(6 downto 0);
-		pause     : in  std_logic;
+		pause     : in  std_logic;                    -- active low
 		sk1100_row_sel  : out std_logic_vector(2 downto 0);
 		sk1100_row_data : in  std_logic_vector(11 downto 0);
 
-		color     : out std_logic_vector(11 downto 0);
+		ce_pix    : out std_logic;
+		x         : out std_logic_vector(8 downto 0);
+		y         : out std_logic_vector(8 downto 0);
+		color     : out std_logic_vector(11 downto 0); -- b g r, 4 bits each
+		smode_M1  : out std_logic;
+		smode_M3  : out std_logic;
 		hsync     : out std_logic;
 		vsync     : out std_logic;
 		hblank    : out std_logic;
@@ -48,10 +54,12 @@ entity sms_measure is
 		nvram_we  : out std_logic;
 		nvram_q   : in  std_logic_vector(7 downto 0)
 	);
-end sms_measure;
+end sms_machine;
 
-architecture rtl of sms_measure is
-	signal x, y : std_logic_vector(8 downto 0);
+architecture rtl of sms_machine is
+	signal clkd : unsigned(4 downto 0) := (others => '0');
+	signal ce_cpu, ce_vdp, ce_pix_i, ce_sp : std_logic := '0';
+	signal x_i, y_i : std_logic_vector(8 downto 0);
 	signal vcounter_cpu : std_logic_vector(7 downto 0);
 	signal mask_column, m1, m2, m3, m4 : std_logic;
 	signal ram_a : std_logic_vector(13 downto 0);
@@ -61,20 +69,47 @@ architecture rtl of sms_measure is
 begin
 	fm_ena <= '1' when FM else '0';
 
+	-- clock enables, as the always @(negedge clk_sys) block of SMS.sv
+	process (clk_sys)
+	begin
+		if rising_edge(clk_sys) then
+			ce_sp <= clkd(0);
+			ce_vdp <= '0';
+			ce_pix_i <= '0';
+			ce_cpu <= '0';
+			clkd <= clkd + 1;
+			case to_integer(clkd) is
+				when 29 => clkd <= (others => '0'); ce_vdp <= '1'; ce_pix_i <= '1';
+				when 24 => ce_cpu <= '1'; ce_vdp <= '1';
+				when 19 => ce_vdp <= '1'; ce_pix_i <= '1';
+				when 14 => ce_vdp <= '1';
+				when 9  => ce_cpu <= '1'; ce_vdp <= '1'; ce_pix_i <= '1';
+				when 4  => ce_vdp <= '1';
+				when others => null;
+			end case;
+		end if;
+	end process;
+
+	ce_pix <= ce_pix_i;
+	x <= x_i;
+	y <= y_i;
+	smode_M1 <= m1;
+	smode_M3 <= m3;
+
 	vid : entity work.video
 	port map (
-		clk => clk_sys, ce_pix => ce_pix, pal => pal, border => border, ggres => '0',
+		clk => clk_sys, ce_pix => ce_pix_i, pal => pal, border => border, ggres => '0',
 		mask_column => mask_column, cut_mask => '0',
 		smode_M1 => m1, smode_M2 => m2, smode_M3 => m3, smode_M4 => m4,
 		video_state_out => open,
-		x => x, y => y, vcounter_cpu => vcounter_cpu,
+		x => x_i, y => y_i, vcounter_cpu => vcounter_cpu,
 		hsync => hsync, vsync => vsync, hblank => hblank, vblank => vblank
 	);
 
 	sys : entity work.system
 	generic map (MAX_SPPL => 7, BASE_DIR => "")
 	port map (
-		clk_sys => clk_sys, ce_cpu => ce_cpu, ce_vdp => ce_vdp, ce_pix => ce_pix, ce_sp => ce_sp,
+		clk_sys => clk_sys, ce_cpu => ce_cpu, ce_vdp => ce_vdp, ce_pix => ce_pix_i, ce_sp => ce_sp,
 		turbo => '0', gg => gg, ggres => '0', systeme => '0',
 		bios_en => '0', ext_bios_sel => '0', ext_bios_loaded => '0',
 		gg_bios_en => '0', ext_gg_bios_loaded => '0', GG_BIOSWEN => '0',
@@ -92,7 +127,7 @@ begin
 		sc3000_en => sc3000_en, sc_multicart_en => '0', sc_megacart_en => '0', sc_cart_ram => "00",
 		sk1100_en => sk1100_en, sk1100_row_sel => sk1100_row_sel, sk1100_row_data => sk1100_row_data,
 		j1_tr_out => open, j1_th_out => open, j2_tr_out => open, j2_th_out => open,
-		x => x, y => y, vcounter_cpu => vcounter_cpu, color => color,
+		x => x_i, y => y_i, vcounter_cpu => vcounter_cpu, color => color,
 		palettemode => '0', mask_column => mask_column, black_column => '0',
 		smode_M1 => m1, smode_M2 => m2, smode_M3 => m3, smode_M4 => m4,
 		ysj_quirk => '0', pal => pal, region => region,
@@ -101,7 +136,7 @@ begin
 		evolution_gg_active => open, evolution_active => open, mapper_eeprom_out => open,
 		vdp_enables => "00", psg_enables => "00",
 		audioL => audioL, audioR => audioR, fm_ena => fm_ena,
-		dbr => '0', sp64 => '0',
+		dbr => cart_in, sp64 => '0',
 		ram_a => ram_a, ram_d => ram_d, ram_we => ram_we, ram_q => ram_q,
 		nvram_a => nvram_a, nvram_d => nvram_d, nvram_we => nvram_we, nvram_q => nvram_q,
 		encrypt => "00", key_a => open, key_d => x"00",

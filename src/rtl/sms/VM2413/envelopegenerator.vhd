@@ -296,7 +296,7 @@ if ss_hold='0' then
                         when Decay  =>
                             rm := '0'&dr;
                             egtmp := ("00"&tl&"000000") + ("00"&egphase(22-1 downto 22-7-6));
-                        when Release=>
+                        when EgRelease=>
                             rm := '0'&rr;
                             egtmp := ("00"&tl&"000000") + ("00"&egphase(22-1 downto 22-7-6));
                         when Finish =>
@@ -341,7 +341,7 @@ if ss_hold='0' then
                                 dphase(5 downto 0) := "110" * ('1'&rks(1 downto 0));
                                 dphase := SHL( dphase, rm(3 downto 0) );
                                 egphase := egphase - dphase(egphase'range);
-                            when Decay | Release =>
+                            when Decay | EgRelease =>
                                 dphase(dphase'high downto 3) := (others=>'0');
                                 dphase(2 downto 0) := '1'&rks(1 downto 0);
                                 dphase  := SHL(dphase, rm(3 downto 0) - '1');
@@ -361,9 +361,9 @@ if ss_hold='0' then
                             end if;
                         when Decay =>
                             if egphase(egphase'high downto egphase'high-4) >= '0'&sl then
-                                egstate := Release;
+                                egstate := EgRelease;
                             end if;
-                        when Release =>
+                        when EgRelease =>
                             if( egphase(egphase'high downto egphase'high-4) >= "01111" ) then
                                 egstate:= Finish;
                             end if;
@@ -377,7 +377,7 @@ if ss_hold='0' then
                         egphase(egphase'high-1 downto 0) := (others =>'1');
                         egstate:= Attack;
                     elsif lastkey(conv_integer(slot)) = '1' and key = '0' and egstate /= Finish then
-                        egstate:= Release;
+                        egstate:= EgRelease;
                     end if;
                     lastkey(conv_integer(slot)) := key;
 

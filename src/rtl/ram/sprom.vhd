@@ -1,6 +1,7 @@
 -- karabas: inferred replacement of the altsyncram sprom of SMS_MiSTer (rtl/sprom.vhd), same entity.
 -- init_file: a name ending in ".bin" = a text file of one word per line as binary digits (made
--- from a .mif by src/tools/mif2bin.py); any other name (the .mif of upstream) = zeros.
+-- from a .mif by src/tools/mif2bin.py); any other name (the .mif of upstream) = no memory, q = 0
+-- (the boot ROM of SMS_MiSTer is not used here; a 16 KB block of zeros also breaks the sim).
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -23,13 +24,18 @@ end sprom;
 architecture rtl of sprom is
 	type t_rom is array (0 to 2**widthad_a-1) of std_logic_vector(width_a-1 downto 0);
 
+	function has_file(name : string) return boolean is
+	begin
+		return name'length >= 4 and name(name'right-3 to name'right) = ".bin";
+	end function;
+
 	impure function load(name : string) return t_rom is
 		file f      : text;
 		variable l  : line;
 		variable bv : bit_vector(width_a-1 downto 0);
 		variable r  : t_rom := (others => (others => '0'));
 	begin
-		if name'length < 4 or name(name'right-3 to name'right) /= ".bin" then
+		if not has_file(name) then
 			return r;
 		end if;
 		file_open(f, name, read_mode);
@@ -43,12 +49,19 @@ architecture rtl of sprom is
 		return r;
 	end function;
 
-	signal rom : t_rom := load(init_file);
 begin
-	process (clock)
+	g_rom : if has_file(init_file) generate
+		signal rom : t_rom := load(init_file);
 	begin
-		if rising_edge(clock) then
-			q <= rom(to_integer(unsigned(address)));
-		end if;
-	end process;
+		process (clock)
+		begin
+			if rising_edge(clock) then
+				q <= rom(to_integer(unsigned(address)));
+			end if;
+		end process;
+	end generate;
+
+	g_none : if not has_file(init_file) generate
+		q <= (others => '0');
+	end generate;
 end rtl;

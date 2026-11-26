@@ -5,7 +5,7 @@ run
 -ofn sms_fm
 -ofmt NGC
 -p xc6slx25-2-ftg256
--top sms_measure
+-top sms_machine
 -generics {FM=true}
 -opt_mode Speed
 -opt_level 2
