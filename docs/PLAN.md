@@ -44,6 +44,17 @@
 - `make sms-xst`: LUT / FF / RAMB16 / Fmax машины с FM и без; решение по FM и клоку (MiSTer clk_sys 53,69 МГц).
 - Verilator + ghdl: свободные тестовые ROM (homebrew, тест VDP) рисуют кадр → PNG.
 
+**Замер XST (2026-11-27, ветка f0-import):** `cd src && make sms-xst sms-xst-nofm sms-report`, верх `measure/sms_measure.vhd` (system + video + WRAM 8 КБ; System E, Evolution, BIOS, читы, link, снапшоты отключены константами — XST их выкидывает), xc6slx25-2, `-iobuf NO`, по ~1,5 мин.
+
+| Сборка | LUT | FF | RAMB16 | DSP48 | XST, МГц |
+|---|---|---|---|---|---|
+| с FM (VM2413) | 8 890 (59 %) | 5 510 | 15 | 4 | 72,0 |
+| без FM | 3 996 (26 %) | 2 131 | 13 | 0 | 72,0 |
+
+Нужно 53,69 МГц — запас есть. FM стоит ~4,9 тыс. LUT и 3,4 тыс. FF (VM2413 с шиной снапшотов). Обвязка платы — ещё ~3,2 тыс. LUT (как у wonderswan / gameboy), итого с FM ≈ 12 тыс. LUT (~80 %): **FM оставляем**. Если на PAR не сойдётся — облегчить VM2413 (убрать ss-порты) или взять jt2413 (Jotego) — в беклог. VRAM в XST ужалась до 16 КБ сама (бит банка System E = 0).
+
+Правки импорта (`src/rtl/sms`, помечены `karabas:`): `entity work.X` вместо `work.X` (T80, opll), пакет `jt89` → `jt89_pkg` (совпадал с именем Verilog-модуля), `'range` скалярного подтипа в VM2413, `when others` во всех `case` (`src/tools/case_others.py`). Verilog jt89 / MC8123 / SEGASYS1 / parts — через sv2v в `src/rtl/sv` (jt89: `cen_16` объявлен до использования), читы — заглушка `src/rtl/stub/codes_stub.v`, RAM Altera (`dpram` / `spram` / `sprom`) — свои в `src/rtl/ram`.
+
 ### Ф1. SMS на Mini G
 - Верх Mini G (от Sega / Game Boy), клоки, `sms_sdram` + загрузка `F`, `sms_fb` 1024 × 768, OSD, пады / клавиатура → джойстики SMS, кнопка Pause, звук HDMI + ЦАП.
 - Проверка на плате (после «да» на захват).
