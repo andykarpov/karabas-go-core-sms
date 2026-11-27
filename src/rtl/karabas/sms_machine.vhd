@@ -5,7 +5,7 @@
 -- (internal boot ROM and loaded BIOS), paddles, savestates; XST drops that logic.
 -- Ports stay for what the board glue drives: cartridge ROM (SDRAM), cart RAM (nvram), pads, SK-1100
 -- keyboard, video (x / y of the pixel on ce_pix, 12-bit colour), audio.
--- FM = false ties fm_ena to 0 so XST drops the VM2413.
+-- FM = false ties fm_ena to 0 so XST drops the VM2413; with FM = true fm_on switches it.
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -25,6 +25,8 @@ entity sms_machine is
 		sk1100_en : in  std_logic;
 		mapper_lock : in std_logic;
 		cart_in   : in  std_logic;                    -- 1 = a cartridge is loaded (dbr of MiSTer)
+		fm_on     : in  std_logic;                    -- the YM2413 (when FM = true)
+		ce_cpu_o  : out std_logic;                    -- the CPU clock enable (clkref of the SDRAM)
 
 		rom_rd    : out std_logic;
 		rom_a     : out std_logic_vector(23 downto 0);
@@ -67,7 +69,8 @@ architecture rtl of sms_machine is
 	signal ram_we : std_logic;
 	signal fm_ena : std_logic;
 begin
-	fm_ena <= '1' when FM else '0';
+	fm_ena <= fm_on when FM else '0';
+	ce_cpu_o <= ce_cpu;
 
 	-- clock enables, as the always @(negedge clk_sys) block of SMS.sv
 	process (clk_sys)

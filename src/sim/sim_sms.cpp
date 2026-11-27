@@ -1,4 +1,7 @@
-// sim_sms.cpp - harness of sms_machine (SMS / GG / SG-1000), the cartridge ROM and RAM in C++.
+// sim_sms.cpp - harness of sms_machine (SMS / GG / SG-1000), the cartridge ROM and RAM in C++;
+// built with -DSIM_SYS it drives sim_top.v instead: the file goes in as the bytes of the file loader
+// of kg_mcu2 (one every 14 clocks = 258 ns, the fastest the mcu sends) through sms_loader and
+// sms_sdram into the SDRAM model, and the machine reads its ROM from there.
 //
 // One clk_sys period = 2 steps; inputs change after the falling edge. The cartridge ROM answers the
 // address of the previous clock (rom_do = rom[rom_a] one clock late: the SDRAM of the board gives
@@ -13,7 +16,13 @@
 //   --wav FILE        write the audio (left channel, 16 bit, 1 sample per 1024 clocks = 52.4 kHz)
 // Prints one line per frame (checksum) and "PASS" / "FAIL: ..." at the end.
 
+#ifdef SIM_SYS
+#include "Vsim_top.h"
+typedef Vsim_top Top;
+#else
 #include "Vsms_machine.h"
+typedef Vsms_machine Top;
+#endif
 #include "verilated.h"
 #include <cstdio>
 #include <cstdlib>
@@ -22,7 +31,7 @@
 #include <string>
 #include <vector>
 
-static Vsms_machine *top;
+static Top *top;
 static std::vector<uint8_t> rom, nvram(32 * 1024, 0xFF);
 static uint64_t clocks;
 
@@ -78,13 +87,36 @@ int main(int argc, char **argv) {
 	if (fread(rom.data(), 1, rom.size(), rf) != rom.size()) { printf("FAIL: read\n"); return 1; }
 	fclose(rf);
 
-	top = new Vsms_machine;
+	top = new Top;
+#ifdef SIM_SYS
+	top->pal = pal; top->border = 0; top->fm_on = 1;
+	top->j1 = 0x7F; top->j2 = 0x7F; top->pause = 1;
+	top->file_active = 0; top->file_wr = 0; top->file_addr = 0; top->file_data = 0;
+	{   // the extension: .gg with --gg, else .sms
+		const char *e = gg ? "gg" : "sms"; uint64_t x = 0;
+		for (int k = 0; e[k]; k++) x |= (uint64_t)(uint8_t)e[k] << (8 * k);
+		top->file_ext = x;
+	}
+	for (int i = 0; i < 2000; i++) { edge_rise(); edge_fall(); }   // the SDRAM init
+	top->file_active = 1;
+	for (int i = 0; i < 16; i++) { edge_rise(); edge_fall(); }
+	for (size_t a = 0; a < rom.size(); a++) {
+		top->file_addr = a; top->file_data = rom[a]; top->file_wr = 1;
+		edge_rise(); edge_fall();
+		top->file_wr = 0;
+		for (int k = 0; k < 13; k++) { edge_rise(); edge_fall(); }
+	}
+	for (int i = 0; i < 64; i++) { edge_rise(); edge_fall(); }
+	top->file_active = 0;
+	printf("loaded %zu bytes at clock %llu\n", rom.size(), (unsigned long long)clocks);
+#else
 	top->reset_n = 0; top->gg = gg; top->pal = pal; top->region = 0; top->border = 0;
-	top->sc3000_en = 0; top->sk1100_en = 0; top->mapper_lock = 0; top->cart_in = 1;
+	top->sc3000_en = 0; top->sk1100_en = 0; top->mapper_lock = 0; top->cart_in = 1; top->fm_on = 1;
 	top->j1 = 0x7F; top->j2 = 0x7F; top->pause = 1; top->sk1100_row_data = 0xFFF;
 	top->rom_do = 0xFF; top->nvram_q = 0xFF;
 	for (int i = 0; i < 256; i++) { edge_rise(); edge_fall(); }
 	top->reset_n = 1;
+#endif
 
 	std::vector<int16_t> wav;
 	int frame = 0, old_vs = top->vsync;
@@ -93,6 +125,7 @@ int main(int argc, char **argv) {
 	uint32_t sum = 0;
 	while (frame < frames && clocks < limit) {
 		edge_rise();
+#ifndef SIM_SYS
 		// memories: answer the address of this clock on the next one
 		uint32_t ra = top->rom_a;
 		uint8_t rd = rom.empty() ? 0xFF : rom[ra % rom.size()];
@@ -100,6 +133,7 @@ int main(int argc, char **argv) {
 		uint32_t na = top->nvram_a;
 		if (top->nvram_we) nvram[na] = top->nvram_d;
 		uint8_t nd = nvram[na];
+#endif
 		// video: the pixel of (x, y) on ce_pix
 		if (top->ce_pix) { // the colour of the pixel x comes one pixel later: it goes to x - 1
 			int x = top->x - 1, y = top->y;
@@ -110,8 +144,10 @@ int main(int argc, char **argv) {
 			}
 		}
 		edge_fall();
+#ifndef SIM_SYS
 		top->rom_do = rd;
 		top->nvram_q = nd;
+#endif
 		if (!wavf.empty() && (clocks & 1023) == 0) wav.push_back((int16_t)top->audioL);
 		if (top->vsync && !old_vs) {
 			frame++;
@@ -130,6 +166,9 @@ int main(int argc, char **argv) {
 		put32(o, 16); put16(o, 1); put16(o, 1); put32(o, 52435); put32(o, 52435 * 2); put16(o, 2); put16(o, 16);
 		fwrite("data", 1, 4, o); put32(o, n); fwrite(wav.data(), 2, wav.size(), o); fclose(o);
 	}
+#ifdef SIM_SYS
+	if (top->sdram_errors) { printf("FAIL: %u SDRAM protocol errors\n", top->sdram_errors); return 1; }
+#endif
 	if (!expect.empty()) {
 		std::vector<uint8_t> ref;
 		if (!read_ppm(expect, ref)) { printf("FAIL: no reference %s\n", expect.c_str()); return 1; }
