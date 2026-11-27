@@ -89,6 +89,9 @@ GG / SG / SC по расширению: файловый загрузчик пр
 - OSD: регион (NTSC / PAL, Japan / Export), маппер (Auto / принудительно), FM, рамка, левая колонка, лишние спрайты.
 - Верхи Go / Mini (`mktops.py`), три платы, `sms.kg`, README.md + README.ru.md, `cores.json` karabas-go.
 
+**Ф3, ход (2026-11-27):** `src/tools/mktops.py` (по образцу core-sega) делает из верха Mini G верхи Mini (сигма-дельта вместо ЦАП, `MCU_IO[3:2]`, `FT_RESET`) и Go (без АЦП, VGA, `V_CLK` инверсный, `FLASH_CS_N` = 1) и их ucf; pin-часть ucf — из core-sega. Сборка 26112704: Mini G 13 133 LUT (87 %) / 96 % слайсов, Mini 13 147 (87 %) / 97 %, Go 11 614 (77 %) / 90 %, тайминг выполнен везде — ужимать не пришлось. Go и Mini на платах не запускались, 26112704 на Mini G тоже (отличие от проверенной 26112703 — два пункта OSD). Без прогона src/sim/run.sh (решение пользователя).
+OSD: Region, Video, FM sound, Border, Swap joys, Left column (BG / Black = `black_column`), Sprites (Standard / All = `sp64`), Reset (F12). Принудительный маппер и обрезка колонки — в BACKLOG. README.md + README.ru.md.
+
 ## Риски
 
 | Риск | Что делаем |

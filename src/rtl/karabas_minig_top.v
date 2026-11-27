@@ -213,7 +213,7 @@ wire [63:0] ld_ext;
 wire ld_active, ld_wr;
 wire dvi_only;
 wire ft_cs_n, ft_mosi, ft_spi_on, sd2_cs_n, sd2_mosi;
-wire [6*8-1:0] sw;
+wire [8*8-1:0] sw;
 // the .sav file of kg_bk_ram (slot 0) on the mounter of kg_mcu2
 wire [7:0] img_flush, sdc_img_mounted, sdc_rd, sdc_wr, sdc_byte_in_data, sdc_byte_out_data, bk_kind, bk_result;
 wire [63:0] sdc_img_size;
@@ -232,7 +232,7 @@ wire [5:0] osd_pw;
 
 kg_mcu2 #(
 	.CAPS(16'h0002),     // backup RAM: the firmware flushes the .sav before a new game
-	.SW_N(6),
+	.SW_N(8),
 	.CS_FILTER(3),
 	.ENABLE_OSD(1),
 	.ENABLE_IMG(1),      // the .sav file of kg_bk_ram
@@ -302,7 +302,9 @@ wire sw_pal = sw[1*8];        // 0 NTSC, 1 PAL
 wire sw_fm_off = sw[2*8];     // 0 FM on, 1 off
 wire sw_border = sw[3*8];
 wire sw_swap = sw[4*8];
-wire sw_reset = sw[5*8];
+wire sw_black_col = sw[5*8];  // the masked left column: 0 backdrop, 1 black
+wire sw_sp_all = sw[6*8];     // sprites per line: 0 standard, 1 all
+wire sw_reset = sw[7*8];
 
 // ------------------------------------------------------------------ cartridge
 
@@ -442,6 +444,8 @@ sms_machine #(.FM(1'b1)) sms (
 	.pal(sw_pal),
 	.region(sw_japan),
 	.border(sw_border),
+	.black_column(sw_black_col),
+	.sp64(sw_sp_all),
 	.sc3000_en(cart_sc),
 	.sk1100_en(cart_sc),
 	.mapper_lock(1'b0),
