@@ -1,7 +1,7 @@
 {
     "id": "sms",
     "name": "Master System",
-    "build": "26112703",
+    "build": "26112704",
     "visible": true,
     "type": "fileloader",
     "dir": "sms",
@@ -12,7 +12,9 @@
     "rtc_mode": 0,
     "roms": [],
     "boards": {
-        "minig": {"link": 2, "build": "26112703", "bitstream": "karabas_minig.bin"}
+        "go": {"link": 2, "build": "26112704", "bitstream": "karabas_go.bin"},
+        "mini": {"link": 2, "build": "26112704", "bitstream": "karabas_mini.bin"},
+        "minig": {"link": 2, "build": "26112704", "bitstream": "karabas_minig.bin"}
     },
     "osd": [
     {"type": "S", "name": "Region", "options": ["Export", "Japan"], "default": 0},
@@ -20,6 +22,8 @@
     {"type": "S", "name": "FM sound", "options": ["On", "Off"], "default": 0},
     {"type": "S", "name": "Border", "options": ["Off", "On"], "default": 0},
     {"type": "S", "name": "Swap joys", "options": ["Off", "On"], "default": 0},
+    {"type": "S", "name": "Left column", "options": ["BG", "Black"], "default": 0},
+    {"type": "S", "name": "Sprites", "options": ["Standard", "All"], "default": 0},
     {"type": "T", "name": "Reset", "hotkey": "F12"}
     ]
 }

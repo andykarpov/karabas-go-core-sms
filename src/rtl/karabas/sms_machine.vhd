@@ -23,6 +23,8 @@ entity sms_machine is
 		pal       : in  std_logic;
 		region    : in  std_logic;
 		border    : in  std_logic;
+		black_column : in std_logic;                  -- 1 = the masked left column (VDP reg 0 bit 5) black, not the backdrop
+		sp64      : in  std_logic;                    -- 1 = more than 4 sprites per line in the TMS modes (SMS: MAX_SPPL 7 = 8 anyway)
 		sc3000_en : in  std_logic;
 		sk1100_en : in  std_logic;
 		mapper_lock : in std_logic;
@@ -133,7 +135,7 @@ begin
 		sk1100_en => sk1100_en, sk1100_row_sel => sk1100_row_sel, sk1100_row_data => sk1100_row_data,
 		j1_tr_out => open, j1_th_out => open, j2_tr_out => open, j2_th_out => open,
 		x => x_i, y => y_i, vcounter_cpu => vcounter_cpu, color => color,
-		palettemode => palettemode, mask_column => mask_column, black_column => '0',
+		palettemode => palettemode, mask_column => mask_column, black_column => black_column,
 		smode_M1 => m1, smode_M2 => m2, smode_M3 => m3, smode_M4 => m4,
 		ysj_quirk => '0', pal => pal, region => region,
 		mapper_lock => mapper_lock, mapper_codies_force => '0', mapper_dahjee_a_force => '0',
@@ -141,7 +143,7 @@ begin
 		evolution_gg_active => open, evolution_active => open, mapper_eeprom_out => open,
 		vdp_enables => "00", psg_enables => "00",
 		audioL => audioL, audioR => audioR, fm_ena => fm_ena,
-		dbr => cart_in, sp64 => '0',
+		dbr => cart_in, sp64 => sp64,
 		ram_a => ram_a, ram_d => ram_d, ram_we => ram_we, ram_q => ram_q,
 		nvram_a => nvram_a, nvram_d => nvram_d, nvram_we => nvram_we, nvram_q => nvram_q,
 		encrypt => "00", key_a => open, key_d => x"00",
