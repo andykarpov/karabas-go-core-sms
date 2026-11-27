@@ -15,7 +15,8 @@
 
  The system from the extension of the file (LD_EXT, ASCII, byte 0 = the first character):
    gg = .gg (Game Gear), sg = .sg (SG-1000), sc = .sc (SC-3000); anything else is a Master System
-   cartridge.
+   cartridge. Taken when the file has come: kg_l2_load raises ld_active before the bytes of the
+   extension (START bytes 10..17) are in.
 
  cart_ready from the end of the first file on; loading while a file comes (the top holds the machine
  in reset meanwhile).
@@ -61,9 +62,6 @@ always @(posedge clk) begin
 	if (file_active && !active_d) begin
 		cart_mask <= 22'd0;
 		odd <= 1'b0;
-		gg <= e0 == "g" && e1 == "g" && e2 == 8'd0;
-		sg <= e0 == "s" && e1 == "g" && e2 == 8'd0;
-		sc <= e0 == "s" && e1 == "c" && e2 == 8'd0;
 	end
 
 	if (file_wr) begin
@@ -84,6 +82,9 @@ always @(posedge clk) begin
 	if (!file_active && active_d) begin
 		cart_ready <= 1'b1;
 		romhdr <= last[9:0] == 10'h1FF;
+		gg <= e0 == "g" && e1 == "g" && e2 == 8'd0;
+		sg <= e0 == "s" && e1 == "g" && e2 == 8'd0;
+		sc <= e0 == "s" && e1 == "c" && e2 == 8'd0;
 		if (odd) begin
 			sdr_waddr <= { 2'b00, last[21:1] };
 			sdr_din <= { 8'hFF, lo };

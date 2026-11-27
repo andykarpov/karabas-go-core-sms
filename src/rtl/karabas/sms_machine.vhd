@@ -18,6 +18,8 @@ entity sms_machine is
 		clk_sys   : in  std_logic;
 		reset_n   : in  std_logic;
 		gg        : in  std_logic;
+		ggres     : in  std_logic;                    -- Game Gear: the 160 x 144 window only
+		palettemode : in std_logic;                   -- SG-1000 / SC-3000: the TMS9918 palette
 		pal       : in  std_logic;
 		region    : in  std_logic;
 		border    : in  std_logic;
@@ -101,7 +103,7 @@ begin
 
 	vid : entity work.video
 	port map (
-		clk => clk_sys, ce_pix => ce_pix_i, pal => pal, border => border, ggres => '0',
+		clk => clk_sys, ce_pix => ce_pix_i, pal => pal, border => border, ggres => ggres,
 		mask_column => mask_column, cut_mask => '0',
 		smode_M1 => m1, smode_M2 => m2, smode_M3 => m3, smode_M4 => m4,
 		video_state_out => open,
@@ -113,7 +115,7 @@ begin
 	generic map (MAX_SPPL => 7, BASE_DIR => "")
 	port map (
 		clk_sys => clk_sys, ce_cpu => ce_cpu, ce_vdp => ce_vdp, ce_pix => ce_pix_i, ce_sp => ce_sp,
-		turbo => '0', gg => gg, ggres => '0', systeme => '0',
+		turbo => '0', gg => gg, ggres => ggres, systeme => '0',
 		bios_en => '0', ext_bios_sel => '0', ext_bios_loaded => '0',
 		gg_bios_en => '0', ext_gg_bios_loaded => '0', GG_BIOSWEN => '0',
 		GG_EN => '0', GG_CODE => (others => '0'), GG_RESET => '0', GG_AVAIL => open,
@@ -131,7 +133,7 @@ begin
 		sk1100_en => sk1100_en, sk1100_row_sel => sk1100_row_sel, sk1100_row_data => sk1100_row_data,
 		j1_tr_out => open, j1_th_out => open, j2_tr_out => open, j2_th_out => open,
 		x => x_i, y => y_i, vcounter_cpu => vcounter_cpu, color => color,
-		palettemode => '0', mask_column => mask_column, black_column => '0',
+		palettemode => palettemode, mask_column => mask_column, black_column => '0',
 		smode_M1 => m1, smode_M2 => m2, smode_M3 => m3, smode_M4 => m4,
 		ysj_quirk => '0', pal => pal, region => region,
 		mapper_lock => mapper_lock, mapper_codies_force => '0', mapper_dahjee_a_force => '0',

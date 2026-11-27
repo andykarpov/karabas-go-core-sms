@@ -15,8 +15,17 @@
  clk_65 is crossed with synchronisers, a toggle handshake and the line buffer of sms_fb (TIG).
 
  Memory: the cartridge ROM (up to 4 MB) in the SDRAM (sms_sdram: the controller of SMS_MiSTer, one
- access per CPU cycle); work RAM and VRAM in block RAM; the cartridge RAM (32 KB) in block RAM for
- now (the .sav: Ф2); the SRAM holds the frame buffers of sms_fb (x 4 = 1024 x 768 for 256 x 192).
+ access per CPU cycle); work RAM and VRAM in block RAM; the cartridge RAM (32 KB, also the 93C46
+ EEPROM of the Game Gear cartridges that have one) in block RAM, its second port for kg_bk_ram; the
+ SRAM holds the frame buffers of sms_fb (x 4 = 1024 x 768 for 256 x 192, x 5 for the Game Gear).
+
+ Saves: the cartridge RAM in a .sav file next to the game (32 KB, as MiSTer: mounted for every game,
+ the firmware creates it), through kg_bk_ram on img slot 0: loaded before the CPU starts, saved a
+ second after the game writes it.
+
+ The system from the extension of the file (sms_loader): .gg = Game Gear (its 160 x 144 window, its
+ palette), .sg = SG-1000 (the TMS9918 palette), .sc = SC-3000 (+ the SK-1100 keyboard from the USB
+ keyboard, sms_sk1100), else Master System.
 
  The cartridge: the file of the core (type fileloader: .sms, .gg, .sg, .sc in the sms folder) through
  the file loader of kg_mcu2 into the SDRAM (sms_loader); the machine is held in reset while a file
@@ -205,6 +214,13 @@ wire ld_active, ld_wr;
 wire dvi_only;
 wire ft_cs_n, ft_mosi, ft_spi_on, sd2_cs_n, sd2_mosi;
 wire [6*8-1:0] sw;
+// the .sav file of kg_bk_ram (slot 0) on the mounter of kg_mcu2
+wire [7:0] img_flush, sdc_img_mounted, sdc_rd, sdc_wr, sdc_byte_in_data, sdc_byte_out_data, bk_kind, bk_result;
+wire [63:0] sdc_img_size;
+wire [31:0] sdc_sector, bk_size;
+wire sdc_busy, sdc_done, sdc_error, sdc_byte_in_strobe, bk_mount, bk_flushed;
+wire [2:0] sdc_slot;
+wire [8:0] sdc_byte_addr;
 wire osd_wr, osd_en, osd_zoom;
 wire [11:0] osd_waddr;
 wire [7:0] osd_wdata;
@@ -215,10 +231,12 @@ wire [3:0] osd_py;
 wire [5:0] osd_pw;
 
 kg_mcu2 #(
-	.CAPS(16'h0000),
+	.CAPS(16'h0002),     // backup RAM: the firmware flushes the .sav before a new game
 	.SW_N(6),
 	.CS_FILTER(3),
 	.ENABLE_OSD(1),
+	.ENABLE_IMG(1),      // the .sav file of kg_bk_ram
+	.IMG_OUT_LATENCY(2), // the sector buffer of kg_bk_ram
 	.ENABLE_AUX(1),      // MATRIX_CMD: the audio peaks
 	.ENABLE_FT(1),
 	.ENABLE_SD2(1)
@@ -249,15 +267,15 @@ kg_mcu2 #(
 	.OSD_FG(osd_fg), .OSD_BG(osd_bg), .OSD_ALPHA(osd_alpha), .OSD_PX(osd_px), .OSD_PY(osd_py),
 	.OSD_PW(osd_pw), .OSD_PH(osd_ph), .OSD_PLACE(osd_place), .OSD_ZOOM(osd_zoom),
 
-	.SDC_IMG_MOUNTED(), .SDC_IMG_SIZE(),
-	.SDC_RD(8'd0), .SDC_WR(8'd0), .SDC_SECTOR(32'd0),
-	.SDC_BUSY(), .SDC_DONE(), .SDC_ERROR(), .SDC_SLOT(),
-	.SDC_BYTE_IN_STROBE(), .SDC_BYTE_ADDR(),
-	.SDC_BYTE_IN_DATA(), .SDC_BYTE_OUT_DATA(8'd0),
-	.IMG_WP(), .IMG_PHYS_WR(), .IMG_PHYS(), .IMG_FLUSH(), .FDD_CHNG_WR(), .FDD_CHNG(),
+	.SDC_IMG_MOUNTED(sdc_img_mounted), .SDC_IMG_SIZE(sdc_img_size),
+	.SDC_RD(sdc_rd), .SDC_WR(sdc_wr), .SDC_SECTOR(sdc_sector),
+	.SDC_BUSY(sdc_busy), .SDC_DONE(sdc_done), .SDC_ERROR(sdc_error), .SDC_SLOT(sdc_slot),
+	.SDC_BYTE_IN_STROBE(sdc_byte_in_strobe), .SDC_BYTE_ADDR(sdc_byte_addr),
+	.SDC_BYTE_IN_DATA(sdc_byte_in_data), .SDC_BYTE_OUT_DATA(sdc_byte_out_data),
+	.IMG_WP(), .IMG_PHYS_WR(), .IMG_PHYS(), .IMG_FLUSH(img_flush), .FDD_CHNG_WR(), .FDD_CHNG(),
 	.FDD_CHNG_REQ(1'b0), .FDD_CHNG_DS(2'd0),
-	.BK_MOUNT(1'b0), .BK_FLUSHED(1'b0), .BK_SLOT(3'd0), .BK_SIZE(32'd0),
-	.BK_KIND(8'd0), .BK_RESULT(8'd0),
+	.BK_MOUNT(bk_mount), .BK_FLUSHED(bk_flushed), .BK_SLOT(3'd0), .BK_SIZE(bk_size),
+	.BK_KIND(bk_kind), .BK_RESULT(bk_result),
 	.IMG_ACTIVE(),
 
 	.PORT_OUT_DATA(), .PORT_OUT_WR(), .PORT_OUT_READY(4'b1111), .PORT_IN_DATA(32'd0), .PORT_IN_WR(4'd0),
@@ -304,11 +322,72 @@ sms_loader loader (
 	.loading(loading), .cart_ready(cart_ready)
 );
 
-// reset: the PLL, the Reset item, while a cartridge loads, until the first one is in
+// ------------------------------------------------------------------ save (.sav)
+
+// kg_bk_ram on img slot 0: 64 sectors (32 KB), started when a cartridge is in (loading falls); a new
+// file resets it (the firmware flushes the old one before it loads another game). Every write of the
+// machine to the cartridge RAM marks its sector.
+reg file_active_d = 1'b0, loading_d = 1'b0, bk_reset = 1'b0, bk_start = 1'b0;
+always @(posedge mclk) begin
+	file_active_d <= file_active;
+	loading_d <= loading;
+	bk_reset <= file_active && !file_active_d;
+	bk_start <= loading_d && !loading;
+end
+
+wire [14:0] nvram_a;
+wire [7:0] nvram_d, nvram_q;
+wire nvram_we;
+wire bk_busy, bk_mem_req, bk_mem_we;
+wire [14:0] bk_mem_addr;
+wire [7:0] bk_mem_din, bk_mem_dout;
+reg bk_mem_ack = 1'b0;
+kg_bk_ram #(
+	.SLOT(3'd0),
+	.IDLE_CLOCKS(27'd54167000),    // ~1 s at 54.17 MHz: save after the last write
+	.MAX_CLOCKS(27'd108333000),    // ~2 s: at the latest after the first write
+	.MOUNT_CLOCKS(27'd54167000),   // ~1 s: no answer to the mount, go on without a save
+	.GRACE_CLOCKS(27'd541670),     // ~10 ms: no file
+	.LINK(2),                      // on the mounter of kg_mcu2
+	.SBITS(6)                      // 64 sectors = 32 KB
+) bk_ram (
+	.clk(mclk),
+	.reset(bk_reset),
+	.start(bk_start),
+	.size(7'd64),
+	.kind(8'h00),
+	.busy(bk_busy),
+	.mounted(),
+	.saving(),
+	.save_error(),
+	.wr(nvram_we),
+	.wr_addr(nvram_a),
+	.mem_req(bk_mem_req),
+	.mem_we(bk_mem_we),
+	.mem_addr(bk_mem_addr),
+	.mem_din(bk_mem_din),
+	.mem_ack(bk_mem_ack),
+	.mem_dout(bk_mem_dout),
+	.img_mounted(8'd0), .img_size(64'd0), .img_data_wr(1'b0), .img_data_addr(9'd0), .img_data(8'd0),
+	.img_result_wr(1'b0), .img_result(8'd0), .img_sum(16'd0), .img_flush(img_flush),
+	.img_q_wr(), .img_q_di(), .img_q_ack(1'b0),
+	.sdc_img_mounted_i(sdc_img_mounted), .sdc_img_size_i(sdc_img_size), .sdc_rd_o(sdc_rd),
+	.sdc_wr_o(sdc_wr), .sdc_sector_o(sdc_sector), .sdc_busy_i(sdc_busy), .sdc_done_i(sdc_done),
+	.sdc_error_i(sdc_error), .sdc_slot_i(sdc_slot), .sdc_byte_in_strobe_i(sdc_byte_in_strobe),
+	.sdc_byte_addr_i(sdc_byte_addr), .sdc_byte_in_data_i(sdc_byte_in_data),
+	.sdc_byte_out_data_o(sdc_byte_out_data),
+	.bk_mount(bk_mount), .bk_flushed(bk_flushed), .bk_size(bk_size), .bk_kind(bk_kind),
+	.bk_result(bk_result)
+);
+// the memory port: the second port of the cartridge RAM, the data one clock after the request
+always @(posedge mclk) bk_mem_ack <= bk_mem_req && !bk_mem_ack;
+
+// reset: the PLL, the Reset item, while a cartridge loads, until the first one is in, while the
+// .sav file loads
 reg [7:0] rst_cnt = 8'd0;
 reg sms_reset_n = 1'b0;
 always @(posedge mclk) begin
-	if (areset || sw_reset || loading || !cart_ready)
+	if (areset || sw_reset || loading || !cart_ready || bk_busy)
 		rst_cnt <= 8'd0;
 	else if (rst_cnt != 8'hFF)
 		rst_cnt <= rst_cnt + 8'd1;
@@ -333,6 +412,18 @@ wire [6:0] j1 = ~{ 1'b0, pad1[7] | pad1[8], pad1[6], pad1[4], pad1[3], pad1[2], 
 wire [6:0] j2 = ~{ 1'b0, pad2[7] | pad2[8], pad2[6], pad2[4], pad2[3], pad2[2], pad2[1] };
 wire pause_n = ~(pad1[5] | pad2[5]);
 
+// the SK-1100 keyboard of the SC-3000 (row 7: the joysticks, as MiSTer)
+wire [2:0] sk_row_sel;
+wire [11:0] sk_row_data;
+sms_sk1100 sk1100 (
+	.clk(mclk),
+	.enable(cart_sc),
+	.kbd(hid_kbd),
+	.joy_row({ j2[5], j2[4], j2[3], j2[2], j2[1], j2[0], j1[5], j1[4], j1[3], j1[2], j1[1], j1[0] }),
+	.row_sel(sk_row_sel),
+	.row_data(sk_row_data)
+);
+
 // ------------------------------------------------------------------ the machine
 
 wire ce_cpu, ce_pix, hsync, vsync, hblank, vblank;
@@ -342,35 +433,35 @@ wire [15:0] snd_l, snd_r;
 wire rom_rd;
 wire [23:0] rom_a;
 wire [7:0] rom_do;
-wire [14:0] nvram_a;
-wire [7:0] nvram_d, nvram_q;
-wire nvram_we;
-
 sms_machine #(.FM(1'b1)) sms (
 	.clk_sys(mclk),
 	.reset_n(sms_reset_n),
 	.gg(cart_gg),
+	.ggres(cart_gg),
+	.palettemode(cart_sg | cart_sc),
 	.pal(sw_pal),
 	.region(sw_japan),
 	.border(sw_border),
 	.sc3000_en(cart_sc),
-	.sk1100_en(1'b0),
+	.sk1100_en(cart_sc),
 	.mapper_lock(1'b0),
 	.cart_in(cart_ready),
 	.fm_on(~sw_fm_off),
 	.ce_cpu_o(ce_cpu),
 	.rom_rd(rom_rd), .rom_a(rom_a), .rom_do(rom_do),
 	.j1(j1), .j2(j2), .pause(pause_n),
-	.sk1100_row_sel(), .sk1100_row_data(12'hFFF),
+	.sk1100_row_sel(sk_row_sel), .sk1100_row_data(sk_row_data),
 	.ce_pix(ce_pix), .x(vx), .y(vy), .color(color), .smode_M1(), .smode_M3(),
 	.hsync(hsync), .vsync(vsync), .hblank(hblank), .vblank(vblank),
 	.audioL(snd_l), .audioR(snd_r),
 	.nvram_a(nvram_a), .nvram_d(nvram_d), .nvram_we(nvram_we), .nvram_q(nvram_q)
 );
 
-// the cartridge RAM (32 KB, block RAM; saved to SD in Ф2)
-kg_spram #(.DW(8), .AW(15)) nvram (
-	.clk(mclk), .en(1'b1), .we(nvram_we), .addr(nvram_a), .din(nvram_d), .dout(nvram_q)
+// the cartridge RAM (32 KB, block RAM): port A the machine, port B kg_bk_ram
+kg_tdpram #(.DW(8), .AW(15)) nvram (
+	.clka(mclk), .ena(1'b1), .wea(nvram_we), .addra(nvram_a), .dina(nvram_d), .douta(nvram_q),
+	.clkb(mclk), .enb(1'b1), .web(bk_mem_req & bk_mem_we & ~bk_mem_ack), .addrb(bk_mem_addr),
+	.dinb(bk_mem_din), .doutb(bk_mem_dout)
 );
 
 // ------------------------------------------------------------------ SDRAM
@@ -486,7 +577,8 @@ end
 // the level meters of the mcu: the peaks of the final mix (CMD_AUDIO_PEAKS_L / _R)
 audio_peaks #(.PERIOD_BITS(19)) peaks (.clk(mclk), .audio_l(aud_l), .audio_r(aud_r), .cmd_wr(matrix_cmd_wr), .cmd(matrix_cmd));
 
-kg_pcm5102 #(.DIV_BITS(2)) dac (  // bck 3.39 MHz, 105.8 kHz
+// DIV_BITS 3: bck 1.69 MHz, 52.9 kHz (DIV_BITS 2 = 105.8 kHz: the PCM5102 lost its lock, hiss; user 2026-11-27)
+kg_pcm5102 #(.DIV_BITS(3)) dac (
 	.clk(mclk),
 	.reset(areset),
 	.left(aud_l),

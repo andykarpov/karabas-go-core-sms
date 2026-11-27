@@ -9,6 +9,7 @@
 //
 // usage: Vsms_machine --rom FILE [--frames N] [--ppm PREFIX] [--gg] [--pal] [--expect-ppm FILE]
 //                     [--wav FILE]
+//   --gg / --sg       a Game Gear (160 x 144 window) / SG-1000 (TMS palette) cartridge
 //   --frames N        run N frames (vsync rising edges) after the reset (default 10)
 //   --ppm PREFIX      write PREFIX.ppm of the last frame (256 x 192 active area, RGB)
 //   --expect-ppm FILE the last frame must equal this PPM
@@ -68,7 +69,7 @@ int main(int argc, char **argv) {
 	std::string romf, ppm, expect, wavf;
 	int frames = 10, trace = 0;
 	uint32_t last_ra = ~0u;
-	bool gg = false, pal = false;
+	bool gg = false, pal = false, sg = false;
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];
 		auto nx = [&]() { return std::string(i + 1 < argc ? argv[++i] : ""); };
@@ -79,6 +80,7 @@ int main(int argc, char **argv) {
 		else if (a == "--wav") wavf = nx();
 		else if (a == "--trace") trace = atoi(nx().c_str());
 		else if (a == "--gg") gg = true;
+		else if (a == "--sg") sg = true;
 		else if (a == "--pal") pal = true;
 	}
 	FILE *rf = fopen(romf.c_str(), "rb");
@@ -92,14 +94,16 @@ int main(int argc, char **argv) {
 	top->pal = pal; top->border = 0; top->fm_on = 1;
 	top->j1 = 0x7F; top->j2 = 0x7F; top->pause = 1;
 	top->file_active = 0; top->file_wr = 0; top->file_addr = 0; top->file_data = 0;
-	{   // the extension: .gg with --gg, else .sms
-		const char *e = gg ? "gg" : "sms"; uint64_t x = 0;
+	top->file_ext = 0;
+	for (int i = 0; i < 2000; i++) { edge_rise(); edge_fall(); }   // the SDRAM init
+	top->file_active = 1;
+	for (int i = 0; i < 8; i++) { edge_rise(); edge_fall(); }
+	{   // the extension comes after ld_active rises (kg_l2_load: START bytes 10..17)
+		const char *e = gg ? "gg" : sg ? "sg" : "sms"; uint64_t x = 0;
 		for (int k = 0; e[k]; k++) x |= (uint64_t)(uint8_t)e[k] << (8 * k);
 		top->file_ext = x;
 	}
-	for (int i = 0; i < 2000; i++) { edge_rise(); edge_fall(); }   // the SDRAM init
-	top->file_active = 1;
-	for (int i = 0; i < 16; i++) { edge_rise(); edge_fall(); }
+	for (int i = 0; i < 8; i++) { edge_rise(); edge_fall(); }
 	for (size_t a = 0; a < rom.size(); a++) {
 		top->file_addr = a; top->file_data = rom[a]; top->file_wr = 1;
 		edge_rise(); edge_fall();
@@ -110,7 +114,7 @@ int main(int argc, char **argv) {
 	top->file_active = 0;
 	printf("loaded %zu bytes at clock %llu\n", rom.size(), (unsigned long long)clocks);
 #else
-	top->reset_n = 0; top->gg = gg; top->pal = pal; top->region = 0; top->border = 0;
+	top->reset_n = 0; top->gg = gg; top->ggres = gg; top->palettemode = sg; top->pal = pal; top->region = 0; top->border = 0;
 	top->sc3000_en = 0; top->sk1100_en = 0; top->mapper_lock = 0; top->cart_in = 1; top->fm_on = 1;
 	top->j1 = 0x7F; top->j2 = 0x7F; top->pause = 1; top->sk1100_row_data = 0xFFF;
 	top->rom_do = 0xFF; top->nvram_q = 0xFF;

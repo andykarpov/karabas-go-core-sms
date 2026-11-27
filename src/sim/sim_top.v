@@ -74,7 +74,7 @@ always @(posedge clk_sys) begin
 end
 
 sms_machine sms (
-	.clk_sys(clk_sys), .reset_n(reset_n), .gg(gg), .pal(pal), .region(1'b0), .border(border),
+	.clk_sys(clk_sys), .reset_n(reset_n), .gg(gg), .ggres(gg), .palettemode(sg | sc), .pal(pal), .region(1'b0), .border(border),
 	.sc3000_en(sc), .sk1100_en(1'b0), .mapper_lock(1'b0), .cart_in(cart_ready), .fm_on(fm_on),
 	.ce_cpu_o(ce_cpu),
 	.rom_rd(rom_rd), .rom_a(rom_a), .rom_do(rom_do),

@@ -4,7 +4,7 @@
 # (tools/board_modules.prj), the top. Go / Mini: later (tools/mktops.py from the Mini G files).
 set -e
 cd "$(dirname "$0")/.."
-GLUE="sms_sdram sms_loader sms_kbd sms_fb"
+GLUE="sms_sdram sms_loader sms_kbd sms_sk1100 sms_fb"
 for b in minig; do
 	{ cat measure/sms.prj
 	  for g in $GLUE; do echo "verilog work \"rtl/karabas/$g.v\""; done
