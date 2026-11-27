@@ -4,8 +4,14 @@
 ;   rows 12-23: a checker of colours 1 / 2 (tile 16)
 ;   one 8 x 8 sprite (tile 17, sprite palette colour 1) at x = 120, y = 100
 ; Then plays a PSG tone (channel 0, ~440 Hz) and loops. No interrupts.
+; With -DGG (sjasmplus -DGG vdptest.asm): the Game Gear build vdptest.gg, the same picture with the
+; 12-bit palette of the Game Gear (2 bytes a colour); the Game Gear shows columns 6..25, rows 3..20.
 
+	IFDEF GG
+	output "vdptest.gg"
+	ELSE
 	output "vdptest.sms"
+	ENDIF
 	org 0
 
 VDP_CTRL equ $BF
@@ -46,7 +52,11 @@ main:
 	ld a, $C0
 	out (VDP_CTRL), a
 	ld hl, palette
+	IFDEF GG
+	ld b, 64
+	ELSE
 	ld b, 32
+	ENDIF
 	ld c, VDP_DATA
 	otir
 
@@ -172,9 +182,18 @@ vdp_regs:
 	db $FF, $8A             ; no line interrupt
 vdp_regs_end:
 
+	MACRO COL c                   ; a --bbggrr colour, on the Game Gear as ggggrrrr ----bbbb
+	IFDEF GG
+	db (((c >> 2) & 3) * 5) << 4 | ((c & 3) * 5), ((c >> 4) & 3) * 5
+	ELSE
+	db c
+	ENDIF
+	ENDM
 palette:	; --bbggrr
-	db $00, $03, $0C, $0F, $30, $33, $3C, $3F, $15, $2A, $01, $04, $10, $05, $11, $14
-	db $00, $3F, $03, $0C, $30, $0F, $3C, $33, $2A, $15, $02, $08, $20, $0A, $22, $28
+	COL $00 : COL $03 : COL $0C : COL $0F : COL $30 : COL $33 : COL $3C : COL $3F
+	COL $15 : COL $2A : COL $01 : COL $04 : COL $10 : COL $05 : COL $11 : COL $14
+	COL $00 : COL $3F : COL $03 : COL $0C : COL $30 : COL $0F : COL $3C : COL $33
+	COL $2A : COL $15 : COL $02 : COL $08 : COL $20 : COL $0A : COL $22 : COL $28
 
 	ds $7FF0 - $, $FF
 	db "TMR SEGA", 0, 0, 0, 0, 0, 0, 0, $4C   ; header: no checksum, 32 KB, SMS export
