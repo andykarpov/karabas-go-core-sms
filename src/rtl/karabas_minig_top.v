@@ -577,7 +577,8 @@ end
 // the level meters of the mcu: the peaks of the final mix (CMD_AUDIO_PEAKS_L / _R)
 audio_peaks #(.PERIOD_BITS(19)) peaks (.clk(mclk), .audio_l(aud_l), .audio_r(aud_r), .cmd_wr(matrix_cmd_wr), .cmd(matrix_cmd));
 
-// DIV_BITS 3: bck 1.69 MHz, 52.9 kHz (DIV_BITS 2 = 105.8 kHz: the PCM5102 lost its lock, hiss; user 2026-11-27)
+// DIV_BITS 3: bck 1.69 MHz, 52.9 kHz. With DIV_BITS 2 (105.8 kHz, as core-sega) the user heard hiss on the
+// DAC output (not on HDMI) and suspected the PCM5102 losing its lock at that clock (2026-11-27, to confirm)
 kg_pcm5102 #(.DIV_BITS(3)) dac (
 	.clk(mclk),
 	.reset(areset),
